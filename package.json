@@ -4,18 +4,17 @@
   "description": "",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.146.0"
+    "vscode": "^1.136.2"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "ai-code-companion.helloWorld",
-        "title": "Hello World"
+        "command": "ai-code-companion.addStaticComment",
+        "title": "Add Static Comment"
       }
     ]
   },

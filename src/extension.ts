@@ -1,26 +1,39 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+const commentDecoration = vscode.window.createTextEditorDecorationType({
+	after: {
+		contentText: '  Static comment: review this snippet.',
+		color: new vscode.ThemeColor('editorHoverWidget.foreground'),
+		backgroundColor: new vscode.ThemeColor('editorHoverWidget.background'),
+		border: '1px solid',
+		borderColor: new vscode.ThemeColor('editorHoverWidget.border'),
+		margin: '0 0 0 1em',
+	},
+});
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "ai-code-companion" is now active!');
+let previousEditor: vscode.TextEditor | undefined;
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('ai-code-companion.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from AI Code Companion!');
-	});
+export function addStaticComment(): void {
+	const editor = vscode.window.activeTextEditor;
 
-	context.subscriptions.push(disposable);
+	if (!editor) {
+		vscode.window.showInformationMessage('Open a file before adding a comment.');
+		return;
+	}
+
+	previousEditor?.setDecorations(commentDecoration, []);
+	const line = Math.min(2, editor.document.lineCount - 1);
+	const position = new vscode.Position(line, editor.document.lineAt(line).text.length);
+
+	editor.setDecorations(commentDecoration, [new vscode.Range(position, position)]);
+	previousEditor = editor;
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() {}
+export function activate(context: vscode.ExtensionContext): void {
+	context.subscriptions.push(
+		vscode.commands.registerCommand('ai-code-companion.addStaticComment', addStaticComment),
+		commentDecoration
+	);
+}
+
+export function deactivate(): void {}
