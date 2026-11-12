@@ -13,10 +13,42 @@
   "contributes": {
     "commands": [
       {
-        "command": "ai-code-companion.addStaticComment",
-        "title": "Add Static Comment"
+        "command": "ai-code-companion.reviewSelection",
+        "title": "Review Selection"
+      },
+      {
+        "command": "ai-code-companion.setApiKey",
+        "title": "Set Google AI Studio API Key"
+      },
+      {
+        "command": "ai-code-companion.addLoremIpsumComment",
+        "title": "Developer: Add Lorem Ipsum Comment"
+      },
+      {
+        "command": "ai-code-companion.elaborateComment",
+        "title": "Elaborate AI Comment",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "ai-code-companion.dismissComment",
+        "title": "Dismiss AI Comment",
+        "icon": "$(close)"
       }
-    ]
+    ],
+    "menus": {
+      "comments/commentThread/title": [
+        {
+          "command": "ai-code-companion.dismissComment",
+          "when": "commentThread == aiCodeComment",
+          "group": "inline"
+        },
+        {
+          "command": "ai-code-companion.elaborateComment",
+          "when": "commentThread == aiCodeComment",
+          "group": "inline"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
