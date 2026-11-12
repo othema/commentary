@@ -1,0 +1,110 @@
+import * as vscode from "vscode";
+
+type CodeComment = {
+	id: string;
+	thread: vscode.CommentThread;
+};
+
+const commentsByDocument = new Map<string, CodeComment[]>();
+let nextCommentId = 1;
+
+export const commentController = vscode.comments.createCommentController(
+	"ai-code-companion",
+	"AI Code Companion"
+);
+
+export function addCodeComment(message: string, lineNumber: number): string | undefined {
+	const editor = vscode.window.activeTextEditor;
+
+	if (!editor) {
+		vscode.window.showInformationMessage("Open a file before adding a comment.");
+		return undefined;
+	}
+
+	const line = Math.min(Math.max(1, Math.floor(lineNumber)) - 1, editor.document.lineCount - 1);
+	const documentComments = commentsByDocument.get(editor.document.uri.toString()) ?? [];
+	const range = new vscode.Range(line, 0, line, editor.document.lineAt(line).text.length);
+	const thread = commentController.createCommentThread(editor.document.uri, range, [{
+		body: message,
+		mode: vscode.CommentMode.Preview,
+		author: { name: "AI Code Companion" },
+		label: "AI suggestion",
+	}]);
+	thread.contextValue = "aiCodeComment";
+	const comment: CodeComment = {
+		id: `comment-${nextCommentId++}`,
+		thread,
+	};
+
+	documentComments.push(comment);
+	commentsByDocument.set(editor.document.uri.toString(), documentComments);
+
+	return comment.id;
+}
+
+export function deleteCodeCommentThread(thread: vscode.CommentThread): boolean {
+	for (const [documentUri, documentComments] of commentsByDocument) {
+		const comment = documentComments.find(({ thread: storedThread }) => storedThread === thread);
+		if (!comment) {
+			continue;
+		}
+
+		thread.dispose();
+		commentsByDocument.set(
+			documentUri,
+			documentComments.filter(({ id }) => id !== comment.id)
+		);
+		return true;
+	}
+
+	return false;
+}
+
+export function appendCodeCommentThread(thread: vscode.CommentThread, message: string): boolean {
+	for (const [documentUri, documentComments] of commentsByDocument) {
+		const storedComment = documentComments.find(({ thread: storedThread }) => storedThread === thread);
+		if (!storedComment || !thread.range) {
+			continue;
+		}
+
+		const replacementThread = commentController.createCommentThread(
+			thread.uri,
+			thread.range,
+			[
+				...thread.comments,
+				{
+					body: message,
+					mode: vscode.CommentMode.Preview,
+					author: { name: "AI Code Companion" },
+					label: "AI elaboration",
+				},
+			]
+		);
+		replacementThread.contextValue = "aiCodeComment";
+		thread.dispose();
+
+		const replacementComment = { ...storedComment, thread: replacementThread };
+		commentsByDocument.set(
+			 documentUri,
+			documentComments.map((comment) => comment.id === storedComment.id ? replacementComment : comment)
+		);
+		return true;
+	}
+
+	return false;
+}
+
+export function deleteCodeComment(commentId: string): boolean {
+	for (const [documentUri, documentComments] of commentsByDocument) {
+		const remainingComments = documentComments.filter(({ id }) => id !== commentId);
+		if (remainingComments.length === documentComments.length) {
+			continue;
+		}
+
+		documentComments.find(({ id }) => id === commentId)?.thread.dispose();
+		commentsByDocument.set(documentUri, remainingComments);
+		return true;
+	}
+
+	return false;
+}
