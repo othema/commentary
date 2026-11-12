@@ -1,0 +1,20 @@
+# TODO
+
+1. Make selection reviews context-aware without sending the entire codebase.
+
+   When the user reviews a selection, send Gemini:
+   - The selected code as the primary review target.
+   - The enclosing function or class signature.
+   - The relevant imports and nearby type definitions.
+   - 10-20 lines of context before and after the selection.
+   - Directly related symbols when they can be found cheaply, such as a called function or referenced type.
+   - Git diff context when the selection is part of a change.
+
+   Preserve absolute document line numbers so comments attach to the correct lines. Tell the model to comment only on the selected code, use surrounding code only for understanding, and return no comment when the available context is insufficient. Keep the prompt and context within a configurable token budget.
+
+   Acceptance criteria:
+   - The selected code remains the only target for generated comments.
+   - Surrounding context helps the model understand what happens before and after the selection.
+   - Irrelevant files and unrelated symbols are not sent.
+   - Large files do not cause unbounded requests.
+   - Existing comment rendering and dismissal continue to work.
