@@ -1,6 +1,6 @@
-# ai-code-companion README
+# Commentary README
 
-This is the README for your extension "ai-code-companion". After writing up a brief description, we recommend including the following sections.
+This is the README for the Commentary extension.
 
 ## Features
 

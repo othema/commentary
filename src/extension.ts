@@ -138,7 +138,7 @@ async function reviewSelection(context: vscode.ExtensionContext): Promise<void> 
 	}
 
 	outputLog.show(true);
-	outputLog.appendLine(`Reviewing selection in ${editor.document.fileName}...`);
+		outputLog.appendLine(`Reviewing selection in ${editor.document.fileName}...`);
 	try {
 		const apiKey = await context.secrets.get(apiKeySecretName);
 		if (!apiKey) {
@@ -168,18 +168,18 @@ async function reviewSelection(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-    outputLog = vscode.window.createOutputChannel("AI Code Companion");
+	outputLog = vscode.window.createOutputChannel("Commentary");
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("ai-code-companion.reviewSelection", () => reviewSelection(context)),
-		vscode.commands.registerCommand("ai-code-companion.setApiKey", () => setGoogleAiStudioApiKey(context)),
-		vscode.commands.registerCommand("ai-code-companion.addLoremIpsumComment", addLoremIpsumComment),
+		vscode.commands.registerCommand("commentary.reviewSelection", () => reviewSelection(context)),
+		vscode.commands.registerCommand("commentary.setApiKey", () => setGoogleAiStudioApiKey(context)),
+		vscode.commands.registerCommand("commentary.addLoremIpsumComment", addLoremIpsumComment),
 		vscode.commands.registerCommand(
-			"ai-code-companion.elaborateComment",
+			"commentary.elaborateComment",
 			(thread: vscode.CommentThread) => elaborateComment(context, thread)
 		),
 		vscode.commands.registerCommand(
-			"ai-code-companion.dismissComment",
+			"commentary.dismissComment",
 			(thread: vscode.CommentThread) => deleteCodeCommentThread(thread)
 		),
 		outputLog,

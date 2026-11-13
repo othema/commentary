@@ -1,6 +1,6 @@
 {
-  "name": "ai-code-companion",
-  "displayName": "AI Code Companion",
+  "name": "commentary",
+  "displayName": "Commentary",
   "description": "",
   "version": "0.0.1",
   "engines": {
@@ -13,24 +13,24 @@
   "contributes": {
     "commands": [
       {
-        "command": "ai-code-companion.reviewSelection",
+        "command": "commentary.reviewSelection",
         "title": "Review Selection"
       },
       {
-        "command": "ai-code-companion.setApiKey",
+        "command": "commentary.setApiKey",
         "title": "Set Google AI Studio API Key"
       },
       {
-        "command": "ai-code-companion.addLoremIpsumComment",
+        "command": "commentary.addLoremIpsumComment",
         "title": "Developer: Add Lorem Ipsum Comment"
       },
       {
-        "command": "ai-code-companion.elaborateComment",
+        "command": "commentary.elaborateComment",
         "title": "Elaborate AI Comment",
         "icon": "$(sparkle)"
       },
       {
-        "command": "ai-code-companion.dismissComment",
+        "command": "commentary.dismissComment",
         "title": "Dismiss AI Comment",
         "icon": "$(close)"
       }
@@ -38,12 +38,12 @@
     "menus": {
       "comments/commentThread/title": [
         {
-          "command": "ai-code-companion.dismissComment",
+          "command": "commentary.dismissComment",
           "when": "commentThread == aiCodeComment",
           "group": "inline"
         },
         {
-          "command": "ai-code-companion.elaborateComment",
+          "command": "commentary.elaborateComment",
           "when": "commentThread == aiCodeComment",
           "group": "inline"
         }

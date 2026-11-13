@@ -1,4 +1,4 @@
-# AI Code Companion Plan
+# Commentary Plan
 
 ## Goal
 

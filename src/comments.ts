@@ -9,8 +9,8 @@ const commentsByDocument = new Map<string, CodeComment[]>();
 let nextCommentId = 1;
 
 export const commentController = vscode.comments.createCommentController(
-	"ai-code-companion",
-	"AI Code Companion"
+	"commentary",
+	"Commentary"
 );
 
 export function addCodeComment(message: string, lineNumber: number): string | undefined {
@@ -27,7 +27,7 @@ export function addCodeComment(message: string, lineNumber: number): string | un
 	const thread = commentController.createCommentThread(editor.document.uri, range, [{
 		body: message,
 		mode: vscode.CommentMode.Preview,
-		author: { name: "AI Code Companion" },
+		author: { name: "Commentary" },
 		label: "AI suggestion",
 	}]);
 	thread.contextValue = "aiCodeComment";
@@ -75,7 +75,7 @@ export function appendCodeCommentThread(thread: vscode.CommentThread, message: s
 				{
 					body: message,
 					mode: vscode.CommentMode.Preview,
-					author: { name: "AI Code Companion" },
+					author: { name: "Commentary" },
 					label: "AI elaboration",
 				},
 			]
