@@ -17,8 +17,12 @@ export const commentController = vscode.comments.createCommentController(
 Add an AI-generated comment thread to the active editor at the requested line.
 Returns: The comment ID, or undefined if no editor is open.
 */
-export function addCodeComment(message: string, lineNumber: number): string | undefined {
-	const editor = vscode.window.activeTextEditor;
+export function addCodeComment(
+	message: string,
+	lineNumber: number,
+	targetEditor = vscode.window.activeTextEditor
+): string | undefined {
+	const editor = targetEditor;
 
 	if (!editor) {
 		vscode.window.showInformationMessage("Open a file before adding a comment.");
@@ -35,6 +39,7 @@ export function addCodeComment(message: string, lineNumber: number): string | un
 		label: "AI suggestion",
 	}]);
 	thread.contextValue = "aiCodeComment";
+	thread.canReply = false;
 	const comment: CodeComment = {
 		id: `comment-${nextCommentId++}`,
 		thread,
@@ -93,6 +98,7 @@ export function appendCodeCommentThread(thread: vscode.CommentThread, message: s
 			]
 		);
 		replacementThread.contextValue = "aiCodeComment";
+		replacementThread.canReply = false;
 		thread.dispose();
 
 		const replacementComment = { ...storedComment, thread: replacementThread };

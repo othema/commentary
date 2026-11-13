@@ -6,6 +6,17 @@ type GeminiResponse = {
 			}>;
 		};
 	}>;
+	usageMetadata?: {
+		promptTokenCount?: number;
+		candidatesTokenCount?: number;
+		totalTokenCount?: number;
+	};
+};
+
+export type LlmUsage = {
+	promptTokenCount?: number;
+	candidatesTokenCount?: number;
+	totalTokenCount?: number;
 };
 
 const defaultModel = "gemini-3-flash-preview";
@@ -14,7 +25,8 @@ const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models";
 export async function sendLlmRequest(
 	prompt: string,
 	apiKey: string,
-	model = defaultModel
+	model = defaultModel,
+	onUsage?: (usage: LlmUsage) => void
 ): Promise<string> {
 	if (!apiKey.trim()) {
 		throw new Error("A Google AI Studio API key is required.");
@@ -43,6 +55,7 @@ export async function sendLlmRequest(
 	}
 
 	const data = (await response.json()) as GeminiResponse;
+	onUsage?.(data.usageMetadata ?? {});
 	const text = data.candidates?.[0]?.content?.parts
 		?.map(({ text: partText }) => partText ?? "")
 		.join("")

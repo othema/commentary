@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
+import { promisify } from "node:util";
 
 import {
 	addCodeComment,
@@ -8,15 +10,32 @@ import {
 	commentController,
 	deleteCodeCommentThread,
 } from "./comments.js";
-import { sendLlmRequest } from "./llm.js";
+import { sendLlmRequest, type LlmUsage } from "./llm.js";
 
 const LLM_API_KEY_SECRET_NAME = "googleAiStudioApiKey";
 const REVIEW_PROMPT_FILE_NAME = "scanner-prompt.txt";
 const ELABORATE_PROMPT_FILE_NAME = "elaborate-prompt.txt";
+const REVIEW_CONTEXT_LINES = 15;
+const REVIEW_CONTEXT_CHAR_BUDGET = 18000;
+const execFileAsync = promisify(execFile);
 
 let outputLog: vscode.OutputChannel;
 let reviewPrompt: string;
 let elaboratePrompt: string;
+
+function logLlmUsage(requestType: string, usage: LlmUsage): void {
+	outputLog.appendLine(
+		`${requestType} token usage: prompt=${usage.promptTokenCount ?? "unknown"}, `
+		+ `output=${usage.candidatesTokenCount ?? "unknown"}, `
+		+ `total=${usage.totalTokenCount ?? "unknown"}`
+	);
+}
+
+function logLlmPrompt(requestType: string, prompt: string): void {
+	outputLog.appendLine(`--- ${requestType} prompt start ---`);
+	outputLog.appendLine(prompt);
+	outputLog.appendLine(`--- ${requestType} prompt end ---`);
+}
 
 /*
 Prompt for a Google AI Studio API key and store it in VS Code Secret Storage.
@@ -96,6 +115,139 @@ function parseReviewComments(response: string, lineCount: number): ReviewComment
 		}));
 }
 
+function formatNumberedLines(lines: string[], startLine: number): string {
+	return lines
+		.map((line, index) => `${startLine + index + 1} | ${line}`)
+		.join("\n");
+}
+
+function truncateSection(section: string, maxCharacters: number): string {
+	if (section.length <= maxCharacters) {
+		return section;
+	}
+	return `${section.slice(0, maxCharacters)}\n[Selection truncated to stay within the review context budget.]`;
+}
+
+function getSelectedLineRange(selection: vscode.Selection): { startLine: number; endLine: number } {
+	return {
+		startLine: selection.start.line,
+		endLine: Math.max(selection.start.line, selection.end.line - (selection.end.character === 0 ? 1 : 0)),
+	};
+}
+
+function findEnclosingSignature(lines: string[], startLine: number): string | undefined {
+	const signaturePattern = /\b(class|function|interface|type)\b|(?:^|\s)(?:public|private|protected|static|async)?\s*\w+\s*\([^)]*\)/;
+	for (let line = startLine; line >= Math.max(0, startLine - 80); line--) {
+		if (signaturePattern.test(lines[line])) {
+			return `${line + 1} | ${lines[line].trim()}`;
+		}
+	}
+	return undefined;
+}
+
+function getImportBlocks(lines: string[]): string[] {
+	const blocks: string[] = [];
+	for (let line = 0; line < lines.length; line++) {
+		if (!/^\s*import\b/.test(lines[line])) {
+			continue;
+		}
+
+		const block = [lines[line]];
+		while (!block[block.length - 1].includes(";") && line + 1 < lines.length) {
+			line++;
+			block.push(lines[line]);
+		}
+		blocks.push(formatNumberedLines(block, line - block.length + 1));
+	}
+	return blocks;
+}
+
+function getRelevantDefinitions(lines: string[], selectedCode: string): string[] {
+	const selectedSymbols = new Set(
+		selectedCode.match(/\b[A-Za-z_$][\w$]*\b/g) ?? []
+	);
+	const definitionPattern = /^\s*(?:export\s+)?(?:type|interface|class|function|const|let|var)\s+([A-Za-z_$][\w$]*)/;
+	return lines.flatMap((line, index) => {
+		const match = line.match(definitionPattern);
+		return match && selectedSymbols.has(match[1])
+			? [`${index + 1} | ${line.trim()}`]
+			: [];
+	});
+}
+
+async function getRelevantGitDiff(
+	document: vscode.TextDocument,
+	startLine: number,
+	endLine: number
+): Promise<string | undefined> {
+	try {
+		const { stdout } = await execFileAsync("git", ["diff", "--unified=20", "--", document.uri.fsPath]);
+		const hunks = stdout.split(/(?=^@@ )/m).filter((hunk) => hunk.startsWith("@@ "));
+		const relevantHunk = hunks.find((hunk) => {
+			const match = hunk.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+			if (!match) {
+				return false;
+			}
+			const hunkStart = Number(match[1]) - 1;
+			const hunkEnd = hunkStart + Number(match[2] ?? 1) - 1;
+			return hunkStart <= endLine && hunkEnd >= startLine;
+		});
+		return relevantHunk?.trim();
+	} catch {
+		return undefined;
+	}
+}
+
+async function buildReviewContext(
+	document: vscode.TextDocument,
+	selection: vscode.Selection
+): Promise<string> {
+	const lines = document.getText().split("\n");
+	const { startLine, endLine } = getSelectedLineRange(selection);
+	const selectedLines = document.getText(selection).split("\n");
+	const contextStart = Math.max(0, startLine - REVIEW_CONTEXT_LINES);
+	const contextEnd = Math.min(lines.length - 1, endLine + REVIEW_CONTEXT_LINES);
+	const surroundingLines = lines.slice(contextStart, contextEnd + 1);
+	const selectedSection = truncateSection(
+		[
+			"SELECTED CODE TO REVIEW (the only code to comment on):",
+			formatNumberedLines(selectedLines, startLine),
+		].join("\n"),
+		REVIEW_CONTEXT_CHAR_BUDGET
+	);
+	const sections = [
+		selectedSection,
+		"SURROUNDING CODE FOR CONTEXT ONLY:",
+		formatNumberedLines(surroundingLines, contextStart),
+	];
+	const signature = findEnclosingSignature(lines, startLine);
+	if (signature) {
+		sections.push("ENCLOSING FUNCTION OR CLASS SIGNATURE:", signature);
+	}
+
+	const imports = getImportBlocks(lines);
+	if (imports.length > 0) {
+		sections.push("RELEVANT IMPORTS:", imports.join("\n"));
+	}
+
+	const definitions = getRelevantDefinitions(lines, selectedLines.join("\n"));
+	if (definitions.length > 0) {
+		sections.push("DIRECTLY RELATED SAME-FILE DEFINITIONS:", definitions.join("\n"));
+	}
+
+	const diff = await getRelevantGitDiff(document, startLine, endLine);
+	if (diff) {
+		sections.push("RELEVANT GIT DIFF CONTEXT:", diff);
+	}
+
+	const context = sections.join("\n");
+	if (context.length <= REVIEW_CONTEXT_CHAR_BUDGET) {
+		return context;
+	}
+
+	return `${selectedSection}\nADDITIONAL CONTEXT TRUNCATED TO KEEP THIS REQUEST BOUNDED.`;
+}
+
 async function loadPrompt(context: vscode.ExtensionContext, filename: string): Promise<string> {
 	return readFile(path.join(context.extensionPath, "prompts", filename), "utf-8");
 }
@@ -129,7 +281,13 @@ async function elaborateComment(
 			`Code line ${lineNumber}: ${sourceLine}`,
 			`Original comment: ${originalComment}`,
 		].join("\n");
-		const elaboration = await sendLlmRequest(prompt, apiKey);
+		logLlmPrompt("Elaboration", prompt);
+		const elaboration = await sendLlmRequest(
+			prompt,
+			apiKey,
+			undefined,
+			(usage) => logLlmUsage("Elaboration", usage)
+		);
 
 		if (!appendCodeCommentThread(thread, elaboration)) {
 			throw new Error("The comment thread is no longer available.");
@@ -165,18 +323,25 @@ async function reviewSelection(context: vscode.ExtensionContext): Promise<void> 
 			return;
 		}
 
-		const numberedSelection = editor.document
-			.getText(editor.selection)
-			.split("\n")
-			.map((line, index) => `${editor.selection.start.line + index + 1} | ${line}`)
-			.join("\n");
-
-		const prompt = `${reviewPrompt}\nSELECTED CODE TO REVIEW:\n${numberedSelection}`;
-		const response = await sendLlmRequest(prompt, apiKey);
+		const reviewContext = await buildReviewContext(editor.document, editor.selection);
+		const prompt = [
+			reviewPrompt,
+			"Review only the selected code. Use all other supplied code only to understand it.",
+			"Preserve the absolute document line numbers in returned comments.",
+			"Return no comment when the available context is insufficient to identify a specific issue.",
+			reviewContext,
+		].join("\n\n");
+		logLlmPrompt("Review", prompt);
+		const response = await sendLlmRequest(
+			prompt,
+			apiKey,
+			undefined,
+			(usage) => logLlmUsage("Review", usage)
+		);
 		const comments = parseReviewComments(response, editor.document.lineCount);
 		
 		for (const comment of comments) {
-			addCodeComment(comment.message, comment.line);
+			addCodeComment(comment.message, comment.line, editor);
 		}
 		outputLog.appendLine(`Added ${comments.length} code comment(s).`);
 	} catch (error) {
