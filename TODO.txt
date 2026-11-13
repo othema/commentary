@@ -1,20 +1,74 @@
-# TODO
+# Next Steps
 
-1. Make selection reviews context-aware without sending the entire codebase.
+## 1. Reduce false positives
 
-   When the user reviews a selection, send Gemini:
-   - The selected code as the primary review target.
-   - The enclosing function or class signature.
-   - The relevant imports and nearby type definitions.
-   - 10-20 lines of context before and after the selection.
-   - Directly related symbols when they can be found cheaply, such as a called function or referenced type.
-   - Git diff context when the selection is part of a change.
+- Change the review prompt to require high confidence before returning a comment.
+- Tell Gemini to return no comment when project-wide intent cannot be established.
+- Add an explicit distinction between a provable defect and an intentional logic mismatch.
+- Include a confidence field in the response and discard comments below a configurable threshold.
 
-   Preserve absolute document line numbers so comments attach to the correct lines. Tell the model to comment only on the selected code, use surrounding code only for understanding, and return no comment when the available context is insufficient. Keep the prompt and context within a configurable token budget.
+Acceptance criteria:
 
-   Acceptance criteria:
-   - The selected code remains the only target for generated comments.
-   - Surrounding context helps the model understand what happens before and after the selection.
-   - Irrelevant files and unrelated symbols are not sent.
-   - Large files do not cause unbounded requests.
-   - Existing comment rendering and dismissal continue to work.
+- Suggestions identify a concrete, actionable defect.
+- Uncertain behavior produces no comment instead of speculation.
+- Existing line numbers and comment rendering remain unchanged.
+
+## 2. Resolve related workspace symbols
+
+- Use VS Code definitions and references APIs for symbols in the selected code.
+- Include only directly referenced functions, methods, types, and constants from nearby workspace files.
+- Include relevant tests or call sites when they are cheap to locate.
+- Deduplicate context and preserve source file names and absolute line numbers.
+
+Acceptance criteria:
+
+- Cross-file behavior can inform a review when symbol resolution succeeds.
+- Unresolved symbols are reported as missing context, not guessed about.
+- Unrelated files are never sent to Gemini.
+
+## 3. Add review modes and limits
+
+- Add Fast, Balanced, and Deep review modes.
+- Keep Fast mode limited to the selection and local context.
+- Allow Balanced mode to resolve directly related workspace symbols.
+- Require explicit user opt-in for Deep mode and larger token budgets.
+- Make context and token limits configurable through VS Code settings.
+
+Acceptance criteria:
+
+- Users can trade review depth for speed and cost.
+- Every request remains within its configured token budget.
+- The output log reports mode, context sources, and actual token usage.
+
+## 4. Improve review feedback
+
+- Add a dismiss action for intentional behavior, separate from deleting a comment.
+- Record dismissed issue fingerprints locally to avoid repeating known false positives.
+- Add a command to review the same selection again with a stricter confidence threshold.
+
+Acceptance criteria:
+
+- Users can mark a suggestion as intentional.
+- Repeated reviews do not continually reproduce dismissed findings.
+- No source code or API keys are stored in feedback data.
+
+## 5. Keep reviews responsive
+
+- Cache parsed document context during a review session.
+- Avoid scanning the entire document repeatedly for imports and definitions.
+- Run Git and symbol lookups concurrently where possible.
+- Add timing logs for context building, Git lookup, symbol lookup, and the LLM request.
+
+Acceptance criteria:
+
+- Review latency is visible in the output log.
+- Context collection does not block the editor unnecessarily.
+- Existing compile, lint, and extension tests continue to pass.
+
+## 6. Add focused tests
+
+- Test selection line numbering, including selections ending at column zero.
+- Test context truncation and token-budget enforcement.
+- Test Git diff filtering for overlapping and non-overlapping hunks.
+- Test malformed, low-confidence, and out-of-range model responses.
+- Test that comments remain attached to the original code editor when the output log has focus.
