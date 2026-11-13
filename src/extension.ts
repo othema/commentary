@@ -10,9 +10,17 @@ import {
 } from "./comments.js";
 import { sendLlmRequest } from "./llm.js";
 
-let outputLog: vscode.OutputChannel;
-const apiKeySecretName = "googleAiStudioApiKey";
+const LLM_API_KEY_SECRET_NAME = "googleAiStudioApiKey";
+const REVIEW_PROMPT_FILE_NAME = "scanner-prompt.txt";
+const ELABORATE_PROMPT_FILE_NAME = "elaborate-prompt.txt";
 
+let outputLog: vscode.OutputChannel;
+let reviewPrompt: string;
+let elaboratePrompt: string;
+
+/*
+Prompt for a Google AI Studio API key and store it in VS Code Secret Storage.
+*/
 async function setGoogleAiStudioApiKey(context: vscode.ExtensionContext): Promise<void> {
 	const apiKey = await vscode.window.showInputBox({
 		prompt: "Enter your Google AI Studio API key",
@@ -25,10 +33,13 @@ async function setGoogleAiStudioApiKey(context: vscode.ExtensionContext): Promis
 		return;
 	}
 
-	await context.secrets.store(apiKeySecretName, apiKey.trim());
+	await context.secrets.store(LLM_API_KEY_SECRET_NAME, apiKey.trim());
 	vscode.window.showInformationMessage("Google AI Studio API key stored securely.");
 }
 
+/*
+Add a placeholder comment at the active editor's current line.
+*/
 function addLoremIpsumComment(): void {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor) {
@@ -48,6 +59,10 @@ type ReviewComment = {
 	severity?: "suggestion" | "question" | "risk";
 };
 
+/*
+Parse and validate up to three review comments from an LLM JSON response.
+Throws: If the response is not a JSON array.
+*/
 function parseReviewComments(response: string, lineCount: number): ReviewComment[] {
 	const json = response
 		.replace(/^```(?:json)?\s*/i, "")
@@ -81,19 +96,19 @@ function parseReviewComments(response: string, lineCount: number): ReviewComment
 		}));
 }
 
-async function loadReviewPrompt(context: vscode.ExtensionContext): Promise<string> {
-	return readFile(path.join(context.extensionPath, "prompts", "scanner-prompt.txt"), "utf8");
+async function loadPrompt(context: vscode.ExtensionContext, filename: string): Promise<string> {
+	return readFile(path.join(context.extensionPath, "prompts", filename), "utf-8");
 }
 
-async function loadElaboratePrompt(context: vscode.ExtensionContext): Promise<string> {
-	return readFile(path.join(context.extensionPath, "prompts", "elaborate-prompt.txt"), "utf8");
-}
-
+/*
+Generate an elaboration for a comment thread and append it to that thread.
+Failures are reported through the output channel and an error notification.
+*/
 async function elaborateComment(
 	context: vscode.ExtensionContext,
 	thread: vscode.CommentThread
 ): Promise<void> {
-	const apiKey = await context.secrets.get(apiKeySecretName);
+	const apiKey = await context.secrets.get(LLM_API_KEY_SECRET_NAME);
 	if (!apiKey) {
 		vscode.window.showInformationMessage("Set your Google AI Studio API key before elaborating a comment.");
 		return;
@@ -110,7 +125,7 @@ async function elaborateComment(
 		const sourceLine = document.lineAt(range.start.line).text;
 		const originalComment = thread.comments[0]?.body.toString() ?? "";
 		const prompt = [
-			await loadElaboratePrompt(context),
+			elaboratePrompt,
 			`Code line ${lineNumber}: ${sourceLine}`,
 			`Original comment: ${originalComment}`,
 		].join("\n");
@@ -126,6 +141,10 @@ async function elaborateComment(
 	}
 }
 
+/*
+Review the active editor's selected code and add the returned comments.
+Failures are reported through the output channel and an error notification.
+*/
 async function reviewSelection(context: vscode.ExtensionContext): Promise<void> {
 	const editor = vscode.window.activeTextEditor;
 	if (!editor) {
@@ -140,7 +159,7 @@ async function reviewSelection(context: vscode.ExtensionContext): Promise<void> 
 	outputLog.show(true);
 		outputLog.appendLine(`Reviewing selection in ${editor.document.fileName}...`);
 	try {
-		const apiKey = await context.secrets.get(apiKeySecretName);
+		const apiKey = await context.secrets.get(LLM_API_KEY_SECRET_NAME);
 		if (!apiKey) {
 			vscode.window.showInformationMessage("Set your Google AI Studio API key before reviewing a file.");
 			return;
@@ -152,7 +171,7 @@ async function reviewSelection(context: vscode.ExtensionContext): Promise<void> 
 			.map((line, index) => `${editor.selection.start.line + index + 1} | ${line}`)
 			.join("\n");
 
-		const prompt = `${await loadReviewPrompt(context)}\nSELECTED CODE TO REVIEW:\n${numberedSelection}`;
+		const prompt = `${reviewPrompt}\nSELECTED CODE TO REVIEW:\n${numberedSelection}`;
 		const response = await sendLlmRequest(prompt, apiKey);
 		const comments = parseReviewComments(response, editor.document.lineCount);
 		
@@ -167,8 +186,17 @@ async function reviewSelection(context: vscode.ExtensionContext): Promise<void> 
 	}
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+/*
+ * Load prompts once and register the extension's commands, output channel, and comment controller.
+*/
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	outputLog = vscode.window.createOutputChannel("Commentary");
+
+	// Load system prompts for comments and elaborations
+	[reviewPrompt, elaboratePrompt] = await Promise.all([
+		loadPrompt(context, REVIEW_PROMPT_FILE_NAME),
+		loadPrompt(context, ELABORATE_PROMPT_FILE_NAME),
+	]);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("commentary.reviewSelection", () => reviewSelection(context)),
@@ -187,4 +215,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	);
 }
 
+/*
+Run extension shutdown cleanup.
+*/
 export function deactivate(): void {}

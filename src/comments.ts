@@ -13,6 +13,10 @@ export const commentController = vscode.comments.createCommentController(
 	"Commentary"
 );
 
+/*
+Add an AI-generated comment thread to the active editor at the requested line.
+Returns: The comment ID, or undefined if no editor is open.
+*/
 export function addCodeComment(message: string, lineNumber: number): string | undefined {
 	const editor = vscode.window.activeTextEditor;
 
@@ -42,6 +46,10 @@ export function addCodeComment(message: string, lineNumber: number): string | un
 	return comment.id;
 }
 
+/*
+Dismiss a tracked comment thread and remove it from the document's comment list.
+Returns: Whether the thread was found and removed.
+*/
 export function deleteCodeCommentThread(thread: vscode.CommentThread): boolean {
 	for (const [documentUri, documentComments] of commentsByDocument) {
 		const comment = documentComments.find(({ thread: storedThread }) => storedThread === thread);
@@ -60,6 +68,10 @@ export function deleteCodeCommentThread(thread: vscode.CommentThread): boolean {
 	return false;
 }
 
+/*
+Append a response to a tracked comment thread
+Returns: Whether the response was added.
+*/
 export function appendCodeCommentThread(thread: vscode.CommentThread, message: string): boolean {
 	for (const [documentUri, documentComments] of commentsByDocument) {
 		const storedComment = documentComments.find(({ thread: storedThread }) => storedThread === thread);
@@ -94,6 +106,10 @@ export function appendCodeCommentThread(thread: vscode.CommentThread, message: s
 	return false;
 }
 
+/*
+Delete a tracked comment by ID and dispose its thread.
+Returns: Whether the comment was found and deleted.
+*/
 export function deleteCodeComment(commentId: string): boolean {
 	for (const [documentUri, documentComments] of commentsByDocument) {
 		const remainingComments = documentComments.filter(({ id }) => id !== commentId);
